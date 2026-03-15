@@ -1,0 +1,167 @@
+// niri compositor config for ThinkPad E14
+// Adapted from hako/Testament dorphine niri.kdl
+// No NVIDIA — amdgpu handles everything natively on E14.
+
+prefer-no-csd
+
+screenshot-path "~/Pictures/Screenshots/%Y%m%d-%H%M%S.png"
+
+// XWayland support via xwayland-satellite (from rosenthal channel)
+xwayland-satellite {
+    path "$$bin/xwayland-satellite$$"
+}
+
+// Shepherd is started via XDG autostart (home-shepherd-service-type).
+// Spawn it explicitly here as well so niri manages its lifetime.
+spawn-at-startup "shepherd"
+
+hotkey-overlay {
+    skip-at-startup
+}
+
+input {
+    keyboard {
+        repeat-delay 300
+        repeat-rate 30
+        // Layout is set via home-keyboard-service-type in the .scm config.
+        // Uncomment to override here if needed:
+        // xkb { layout "us"; }
+    }
+
+    touchpad {
+        tap                    // tap-to-click
+        natural-scroll
+        dwt                    // disable while typing
+        // Three-finger swipe for workspace switching works out of the box.
+    }
+
+    // Warp mouse to the focused window on keyboard focus change.
+    warp-mouse-to-focus
+}
+
+// ── Layout ──────────────────────────────────────────────────────────────────
+layout {
+    // Transparent so noctalia-shell wallpaper shows through.
+    background-color "transparent"
+
+    gaps 8
+
+    focus-ring {
+        off
+    }
+
+    border {
+        off
+    }
+
+    // Rounded corners via Noctalia window rules below.
+}
+
+// ── Noctalia shell integration ──────────────────────────────────────────────
+// Set the wallpaper layer behind everything else.
+layer-rule {
+    match namespace="^noctalia-wallpaper*"
+    place-within-backdrop true
+}
+
+// ── Window rules ─────────────────────────────────────────────────────────────
+window-rule {
+    // Rounded corners for all windows (Noctalia effect).
+    geometry-corner-radius 20
+    clip-to-geometry true
+}
+
+window-rule {
+    match app-id="librewolf" title="^Picture-in-Picture$"
+    open-floating true
+}
+
+window-rule {
+    match app-id="steam" title=r#"^notificationtoasts_\d+_desktop$"#
+    default-floating-position x=10 y=10 relative-to="bottom-right"
+}
+
+window-rule {
+    match app-id="thunar" title="^File Operation Progress$"
+    open-floating true
+}
+
+// ── Overview ─────────────────────────────────────────────────────────────────
+overview {
+    workspace-shadow {
+        off
+    }
+}
+
+// ── Debug ────────────────────────────────────────────────────────────────────
+debug {
+    honor-xdg-activation-with-invalid-serial
+}
+
+// ── Keybindings ──────────────────────────────────────────────────────────────
+// Mod = Super key
+binds {
+    // ── Media / brightness (works on lock screen) ────────────────────────
+    XF86AudioRaiseVolume  allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "volume" "increase"; }
+    XF86AudioLowerVolume  allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "volume" "decrease"; }
+    XF86AudioMute         allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "volume" "muteOutput"; }
+    XF86AudioMicMute      allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "volume" "muteInput"; }
+    XF86AudioPlay         allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "media" "playPause"; }
+    XF86AudioStop         allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "media" "pause"; }
+    XF86AudioPrev         allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "media" "previous"; }
+    XF86AudioNext         allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "media" "next"; }
+    XF86MonBrightnessUp   allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "brightness" "increase"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "noctalia-shell" "ipc" "call" "brightness" "decrease"; }
+
+    // ── Noctalia shell panels ─────────────────────────────────────────────
+    Mod+A { spawn "noctalia-shell" "ipc" "call" "controlCenter" "toggle"; }
+    Mod+O { spawn "noctalia-shell" "ipc" "call" "launcher" "toggle"; }
+    Mod+D { spawn "noctalia-shell" "ipc" "call" "plugin:clipper" "togglePanel"; }
+    Mod+S { spawn "noctalia-shell" "ipc" "call" "settings" "toggle"; }
+    Mod+L { spawn "noctalia-shell" "ipc" "call" "lockScreen" "lock"; }
+    Ctrl+Alt+Delete { spawn "noctalia-shell" "ipc" "call" "sessionMenu" "toggle"; }
+    Mod+Shift+E { spawn "herd" "restart" "noctalia-shell"; }
+
+    // ── App launchers ─────────────────────────────────────────────────────
+    Mod+Return { spawn "foot"; }
+    Mod+E      { spawn "emacsclient" "--create-frame" "--no-wait"; }
+
+    // ── Window / focus management ─────────────────────────────────────────
+    Mod+Left        { focus-column-left; }
+    Mod+Down        { focus-window-down; }
+    Mod+Up          { focus-window-up; }
+    Mod+Right       { focus-column-right; }
+    Mod+Shift+Left  { move-column-left; }
+    Mod+Shift+Down  { move-window-down; }
+    Mod+Shift+Up    { move-window-up; }
+    Mod+Shift+Right { move-column-right; }
+
+    Mod+WheelScrollDown       { focus-column-right; }
+    Mod+WheelScrollUp         { focus-column-left; }
+    Mod+Shift+WheelScrollDown { move-column-right; }
+    Mod+Shift+WheelScrollUp   { move-column-left; }
+
+    // ── Multi-monitor ─────────────────────────────────────────────────────
+    Mod+Ctrl+Left        { focus-monitor-left; }
+    Mod+Ctrl+Right       { focus-monitor-right; }
+    Mod+Ctrl+Shift+Left  { move-column-to-monitor-left; }
+    Mod+Ctrl+Shift+Right { move-column-to-monitor-right; }
+
+    // ── Layout ────────────────────────────────────────────────────────────
+    Mod+Comma  { consume-or-expel-window-left; }
+    Mod+Period { consume-or-expel-window-right; }
+    Mod+F      { maximize-column; }
+    Mod+Shift+F { fullscreen-window; }
+    Mod+C      { center-column; }
+    Mod+V      { toggle-window-floating; }
+    Mod+Shift+V { switch-focus-between-floating-and-tiling; }
+    Mod+Shift+Q { close-window; }
+
+    // ── Overview / workspaces ─────────────────────────────────────────────
+    Mod+Tab repeat=false { toggle-overview; }
+
+    // ── Screenshots ───────────────────────────────────────────────────────
+    Print     { screenshot; }
+    Ctrl+Print { screenshot-screen; }
+    Alt+Print  { screenshot-window; }
+}
