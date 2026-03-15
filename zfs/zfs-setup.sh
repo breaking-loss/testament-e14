@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 # setup/zfs-setup.sh
 #
-# Run this FROM THE RUNNING CACHYOS SYSTEM.
+# Run this FROM A LIVE ENVIRONMENT (e.g. CachyOS live USB).
 #
-# IMPORTANT: Partitioning must be done MANUALLY before running this script
-# because you cannot repartition the disk you are currently booted from
-# using parted --script (it will fail with "partition(s) being used").
+# IMPORTANT: Partitioning must be done MANUALLY before running this script.
+# See README step 5a for exact parted commands.
 #
-# Step 1 — Repartition manually (see README step 5a for exact commands).
-# Step 2 — Run this script to format + create ZFS datasets.
-#
-# Expected partition layout on /dev/nvme0n1 after manual repartition:
+# Expected partition layout on /dev/nvme0n1:
 #   p1 — 512M   EFI  (FAT32)
 #   p2 — 4G     Swap
 #   p3 — rest   ZFS
@@ -48,7 +44,8 @@ echo "==> Generating ZFS host ID"
 zgenhostid
 
 echo "==> Creating ZFS pool: $POOL on ${DISK}p3"
-zpool create \
+# -f forces creation even if the partition has old pool metadata
+zpool create -f \
   -o ashift=12 \
   -O compression=zstd \
   -O atime=off \
@@ -72,19 +69,19 @@ zfs create -o mountpoint=legacy -o com.sun:auto-snapshot=true   "$POOL/Data/Tail
 
 echo "==> Authorizing substitute server keys"
 wget -q https://substitutes.nonguix.org/signing-key.pub -O /tmp/nonguix.pub
-sudo guix archive --authorize < /tmp/nonguix.pub
+guix archive --authorize < /tmp/nonguix.pub
 echo "    nonguix key authorized"
 
 echo "==> Mounting datasets under /mnt"
-sudo mount -t zfs "$POOL/Store"  /mnt
+mount -t zfs "$POOL/Store"  /mnt
 mkdir -p /mnt/{efi,home,etc,var/guix,var/log,var/tmp,var/lib}
-sudo mount "${DISK}p1"            /mnt/efi
-sudo mount -t zfs "$POOL/Guix"   /mnt/var/guix
-sudo mount -t zfs "$POOL/Config" /mnt/etc
-sudo mount -t zfs "$POOL/Home"   /mnt/home
-sudo mount -t zfs "$POOL/Log"    /mnt/var/log
-sudo mount -t zfs "$POOL/Tmp"    /mnt/var/tmp
-sudo mount -t zfs "$POOL/Data"   /mnt/var/lib
+mount "${DISK}p1"            /mnt/efi
+mount -t zfs "$POOL/Guix"   /mnt/var/guix
+mount -t zfs "$POOL/Config" /mnt/etc
+mount -t zfs "$POOL/Home"   /mnt/home
+mount -t zfs "$POOL/Log"    /mnt/var/log
+mount -t zfs "$POOL/Tmp"    /mnt/var/tmp
+mount -t zfs "$POOL/Data"   /mnt/var/lib
 
 cp /etc/hostid /mnt/etc/hostid 2>/dev/null || true
 
@@ -95,5 +92,5 @@ echo "         (define %efi-uuid  \"$EFI_UUID\")"
 echo "         (define %swap-uuid \"$SWAP_UUID\")"
 echo ""
 echo "    2. Run:"
-echo "       sudo guix system init config/thinkpad-e14.scm /mnt \\"
+echo "       guix system init config/thinkpad-e14.scm /mnt \\"
 echo "         --substitute-urls='https://cache-cdn.guix.moe https://substitutes.nonguix.org https://ci.guix.gnu.org https://bordeaux.guix.gnu.org'"
