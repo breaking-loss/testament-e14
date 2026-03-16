@@ -1,81 +1,62 @@
-# testament-e14
+# testament-e14: Guix System on ThinkPad E14
 
-Guix System configuration for **ThinkPad E14** (AMD/Intel iGPU, UEFI, ZFS).
-Adapted from [hako/Testament `dorphine`](https://codeberg.org/hako/Testament).
+This repository contains a Guix System configuration optimized for the
+**ThinkPad E14** (AMD/Intel iGPU) using ZFS with an impermanence pattern.
+It provides a modern Wayland desktop using the **niri** compositor and
+**noctalia-shell**.
 
-## What's different from dorphine
+## Hardware & System Overview
 
-| dorphine | thinkpad-e14 |
-|---|---|
-| NVIDIA dGPU (nvdb, open-beta) | amdgpu (automatic, no config needed) |
-| `linux/dolly` (hako's custom kernel) | `linux` from nonguix |
-| `Etc/GMT-8` / dvorak | `Asia/Kolkata` / us |
-| username: hako | username: abram |
-| cuirass CI worker | removed |
-| alloy monitoring | removed |
-| SOPS secrets (email, alloy) | removed |
-| nftables: minecraft/warframe/CI ports | stripped to basics |
+- **Kernel:** Linux with non-free firmware via NonGuix for Wi-Fi and Bluetooth compatibility.
+- **Graphics:** Native `amdgpu` support — no extra configuration needed.
+- **Filesystem:** ZFS-on-root with a volatile `tmpfs` root `/`. Only `/etc`, `/home`, `/var/guix`, and `/gnu` persist across reboots.
+- **Power Management:** TLP configured with battery charge thresholds (75%–80%) to preserve battery health.
+- **Greeter:** greetd + regreet (GTK4).
+- **Browser:** Zen Browser (set as XDG default).
+- **Terminal:** Foot.
 
-Everything else — niri, noctalia-shell, GDM, ZFS impermanence pattern,
-Guix Home, fish shell, TLP power management — is preserved.
+## Repository Structure
+
+```
+testament-e14/
+├── channels.scm              ← guix pull with this
+├── config/
+│   ├── thinkpad-e14.scm      ← system config
+│   └── niri.kdl              ← niri compositor config
+├── home/
+│   ├── abram.scm             ← top-level home-environment
+│   ├── desktop.scm           ← niri, foot, zen, regreet, XDG
+│   ├── shell.scm             ← fish + plugins
+│   └── fonts.scm             ← fontconfig
+└── setup/
+    └── zfs-setup.sh          ← formats partitions + creates ZFS
+```
 
 ---
 
-## Step-by-step installation
+## Installation
 
-### 1. Copy the Testament live CD ISO to the Ventoy drive
+This guide assumes you are in a **CachyOS live environment** and have
+already partitioned `/dev/nvme0n1` as follows:
 
-```bash
-sudo mount /dev/sda1 /mnt
-sudo cp testament-desktop-*.iso /mnt/
-sudo umount /mnt
-```
+- `nvme0n1p1` — 512M EFI (FAT32)
+- `nvme0n1p2` — 4G Swap
+- `nvme0n1p3` — rest ZFS
 
-Get the desktop ISO from: <https://files.boiledscript.com/livecd/>
+### Step 5a. Repartition the disk manually
 
-### 2. Boot the Testament desktop live CD
-
-From the Ventoy menu, select the Testament ISO. It boots into a GNOME-like
-desktop with fish as the login shell and NetworkManager available.
-
-Connect to WiFi:
-```bash
-nmtui
-```
-
-### 3. Clone this repo onto the live system
-
-```bash
-git clone https://github.com/YOUR_USERNAME/testament-e14.git
-cd testament-e14
-```
-
-### 4. Pull Guix channels
-
-This fetches the exact channel versions needed (nonguix, rosenthal, etc.):
-
-```bash
-guix pull --channels=channels.scm
-hash guix    # refresh PATH to the newly pulled guix
-```
-
-This will take a while the first time.
-
-### 5a. Repartition the disk manually
-
-You cannot run `parted --script` on the disk you're booted from — it will fail with "partition(s) being used". Instead, use interactive `parted`:
+You cannot run `parted --script` on the disk you are booted from. Use
+interactive parted instead:
 
 ```bash
 sudo parted /dev/nvme0n1
 ```
 
-Inside parted, delete the existing CachyOS partitions and recreate for Guix:
+Inside parted (delete old partitions and recreate):
 
 ```
-(parted) print          # confirm current layout
-(parted) rm 1           # delete EFI/boot partition
-(parted) rm 2           # delete CachyOS root
-(parted) mklabel gpt    # only if you want a fresh GPT (optional if already GPT)
+(parted) rm 2
+(parted) rm 1
 (parted) mkpart ESP fat32 1MiB 513MiB
 (parted) set 1 esp on
 (parted) mkpart swap linux-swap 513MiB 4609MiB
@@ -83,51 +64,88 @@ Inside parted, delete the existing CachyOS partitions and recreate for Guix:
 (parted) quit
 ```
 
-This gives you:
-- `nvme0n1p1` — 512M EFI
-- `nvme0n1p2` — 4G Swap
-- `nvme0n1p3` — ~470G ZFS
+Then force the kernel to reload the partition table:
 
-### 5b. Run the ZFS setup script
+```bash
+sudo partprobe /dev/nvme0n1
+lsblk /dev/nvme0n1   # should show p1, p2, p3
+```
+
+### 1. Bootstrap Guix in the live environment
+
+```bash
+cd /tmp
+wget https://guix.gnu.org/guix-install.sh
+chmod +x guix-install.sh
+sudo ./guix-install.sh
+```
+
+Then start the daemon:
+
+```bash
+sudo systemctl start guix-daemon
+source ~/.bashrc
+hash guix
+```
+
+### 2. Clone and prepare channels
+
+```bash
+git clone https://github.com/breaking-loss/testament-e14.git
+cd testament-e14
+guix pull --channels=channels.scm \
+  --substitute-urls='https://cache-cdn.guix.moe https://substitutes.nonguix.org https://ci.guix.gnu.org https://bordeaux.guix.gnu.org'
+hash guix
+```
+
+This pulls nonguix, rosenthal, saayix, and sops-guix channels. Expect
+20–40 minutes on first run.
+
+### 3. Initialize ZFS layout
 
 ```bash
 sudo bash setup/zfs-setup.sh
 ```
 
-The script verifies the partitions exist, formats them, creates the ZFS pool and datasets, authorizes substitute keys, and mounts everything under `/mnt`.
+This script formats the EFI and swap partitions, creates the ZFS pool
+(`zpool`), sets up datasets for persistence, authorizes substitute keys,
+and mounts everything under `/mnt`. The UUIDs for your EFI and swap
+partitions will be printed at the end.
 
-### 6. Update UUIDs in the config
+### 4. Update system configuration
 
-The script prints the UUIDs. Open `config/thinkpad-e14.scm` and update:
+Open `config/thinkpad-e14.scm` and replace the placeholder UUIDs near
+the top with the values printed by the script:
 
 ```scheme
-(define %efi-uuid  "XXXX-XXXX")                            ;; ← replace
-(define %swap-uuid "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx") ;; ← replace
+(define %efi-uuid  "YOUR-EFI-UUID")   ;; ← update this
+(define %swap-uuid "YOUR-SWAP-UUID")  ;; ← update this
 ```
 
-### 7. Initialize the system
+### 5. Perform the installation
 
 ```bash
-guix system init config/thinkpad-e14.scm /mnt
+sudo guix system init config/thinkpad-e14.scm /mnt \
+  --substitute-urls='https://cache-cdn.guix.moe https://substitutes.nonguix.org https://ci.guix.gnu.org https://bordeaux.guix.gnu.org'
 ```
 
-This builds or downloads the entire system closure. Expect 30–90 minutes
-depending on substitute availability. The rosenthal and nonguix substitute
-servers help significantly.
-
-### 8. First boot
-
-```bash
-zpool export Mentha
-reboot
-```
-
-Remove the pendrive when prompted (or let it boot from the UEFI default).
-At the GDM login screen, log in as `abram`. niri starts automatically.
+This downloads pre-built binaries from substitute mirrors. Expect
+30 minutes to a few hours. Do not close the terminal or let the laptop
+sleep during this step.
 
 ---
 
-## Post-install notes
+## Post-Installation
+
+### First boot
+
+```bash
+sudo zpool export zpool
+sudo reboot
+```
+
+Select the NVMe from the ThinkPad boot menu. The regreet greeter will
+appear. Log in as `abram`.
 
 ### Set your password
 
@@ -135,59 +153,61 @@ At the GDM login screen, log in as `abram`. niri starts automatically.
 passwd abram
 ```
 
+### Clean up UEFI boot entries
+
+Previous installs leave stale entries in the UEFI boot menu. Clean them
+up after the Guix bootloader (limine) has been installed:
+
+```bash
+efibootmgr          # list all entries and their numbers
+sudo efibootmgr -b XXXX -B   # delete by number, repeat for each stale entry
+```
+
+Keep only the limine entry created by Guix.
+
 ### Reconfigure after edits
 
 ```bash
-# On the live system during install:
-guix system init config/thinkpad-e14.scm /mnt
-
-# After first boot, to reconfigure:
 sudo guix system reconfigure config/thinkpad-e14.scm
 ```
 
-### ThinkPad battery thresholds
+For home environment changes:
 
-TLP is configured to stop charging at 80% and resume at 75%. Adjust in
-`thinkpad-e14.scm`:
-
-```scheme
-(start-charge-thresh-bat0 75)
-(stop-charge-thresh-bat0  80)
-```
-
-Check current threshold status after boot:
 ```bash
-sudo tlp-stat -b
+guix home reconfigure home/abram.scm
 ```
-
-### ZFS snapshots
-
-Hourly snapshots are taken automatically (72-hour rolling window).
-Weekly scrub runs every Sunday at midnight.
-
-Manual snapshot:
-```bash
-zfs snapshot Mentha/Home@manual-$(date +%Y%m%d)
-```
-
-List snapshots:
-```bash
-zfs list -t snapshot
-```
-
-### Impermanence
-
-The root `/` is a tmpfs — anything written outside the ZFS-mounted paths
-(`/home`, `/etc`, `/gnu`, `/var/guix`) is **lost on reboot**. This is
-intentional (same as dorphine). Put persistent config in `/etc` or home.
 
 ---
 
-## Channels
+## Persistence & Snapshots
 
-| Channel | Purpose |
-|---|---|
-| `guix` | Core Guix |
-| `nonguix` | Blob-inclusive Linux kernel + firmware |
-| `rosenthal` | niri, noctalia-shell, ZFS services, limine bootloader |
-| `sops-guix` | SOPS secrets (optional, included for future use) |
+- **Impermanence:** Files written outside the persistent ZFS datasets
+  (`/home`, `/etc`, `/gnu`, `/var/guix`) are wiped on reboot. This is
+  intentional — the system state is always derived from the config.
+- **Snapshots:** Hourly ZFS snapshots with a 72-hour rolling window.
+  Weekly scrub runs every Sunday at midnight.
+
+Manual snapshot:
+
+```bash
+zfs snapshot zpool/Home@manual-$(date +%Y%m%d)
+zfs list -t snapshot
+```
+
+---
+
+## Desktop Shortcuts (niri)
+
+| Key | Action |
+|-----|--------|
+| `Mod+Return` | Terminal (foot) |
+| `Mod+O` | Launcher |
+| `Mod+A` | Control center |
+| `Mod+S` | Settings |
+| `Mod+L` | Lock screen |
+| `Mod+E` | Emacs |
+| `Mod+F` | Maximize column |
+| `Mod+V` | Toggle floating |
+| `Mod+Shift+Q` | Close window |
+| `Mod+Tab` | Overview |
+| `Print` | Screenshot |
